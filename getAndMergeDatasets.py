@@ -5,6 +5,7 @@ import os
 
 # Select roboflow version here
 roboflow_version = 2
+delete_datasets_after_merge = False
 
 if not (os.path.exists('./datasets')):
     print('Downloading Roboflow dataset')
@@ -23,3 +24,8 @@ if not (os.path.exists('./TACO/data/yolo')):
 if not (os.path.exists('./mergeDataset')):
     print('Merging datasets')
     du.mergeDatasets('./datasets', './TACO/data/yolo', './mergeDataset')
+
+if delete_datasets_after_merge:
+    print('Deleting datasets')
+    du.delete_roboflow_dataset()
+    du.delete_TACO_dataset()
