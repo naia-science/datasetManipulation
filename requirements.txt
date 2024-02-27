@@ -1,0 +1,4 @@
+roboflow==0.2.29
+ultralytics==8.0.196
+pycocotools
+split-folders

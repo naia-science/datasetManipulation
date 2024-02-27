@@ -1,8 +1,5 @@
 import os
 
-os.system('pip install roboflow==0.2.29')
-os.system('pip install ultralytics==8.0.196')
-
 from roboflow import Roboflow
 import ultralytics
 import random
