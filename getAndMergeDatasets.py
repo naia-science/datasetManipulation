@@ -2,6 +2,7 @@
 import datasetUtils as du
 
 import os
+import shutil
 
 if __name__ == '__main__':
     # Select roboflow version here
@@ -24,7 +25,10 @@ if __name__ == '__main__':
 
     if not (os.path.exists('./mergeDataset')):
         print('Merging datasets')
-        du.mergeDatasets('./datasets', './TACO/data/yolo', './mergeDataset')
+
+        path = './datasets/Dataset-ViPARE-' + str(roboflow_version)
+        shutil.copy("./datasets/data.yaml", path + "/data.yaml")
+        du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './TACO/data/yolo', './mergeDataset')
 
     if delete_datasets_after_merge:
         print('Deleting datasets')
