@@ -347,15 +347,33 @@ def mergeDatasets(dataset1, dataset2, output):
 
     # Copy the datasets val, train and test directories to the output directory
     for directory in ["train", "test", "val"]:
+        if not os.path.exists(output + "/" + directory):
+            os.makedirs(output + "/" + directory)
         if os.path.exists(dataset1 + "/" + directory):
-            shutil.copytree(dataset1 + "/" + directory, output + "/" + directory)
+
+            for type in ["images", "labels"]:
+                if not os.path.exists(output + "/" + directory + "/" + type):
+                    os.makedirs(output + "/" + directory + "/" + type)
+                accdir = '/' + directory + '/' + type
+                for file in os.listdir(dataset1 + accdir):
+                    shutil.copy(dataset1 + accdir + "/" + file, output + accdir + "/" + file)
+        
+        # copy the second dataset, if it exists and moving everything from dataset2/val to output/val, knowing output/val already exists
         if os.path.exists(dataset2 + "/" + directory):
-            shutil.copytree(dataset2 + "/" + directory, output + "/" + directory)
+            for type in ["images", "labels"]:
+                if not os.path.exists(output + "/" + directory + "/" + type):
+                    os.makedirs(output + "/" + directory + "/" + type)
+                accdir = '/' + directory + '/' + type
+
+                for file in os.listdir(dataset2 + accdir):
+                    shutil.copy(dataset2 + accdir + "/" + file, output + accdir + "/" + file)
+        
     
     if os.path.exists(dataset1 + "/data.yaml"):
         shutil.copy(dataset1 + "/data.yaml", output + "/data.yaml")
     elif os.path.exists(dataset2 + "/data.yaml"):
         shutil.copy(dataset2 + "/data.yaml", output + "/data.yaml")
+    
     # replace the train, val and test directories in the data.yaml file with the new ones
     with open(output + "/data.yaml", "r") as f:
         lines = f.readlines()
