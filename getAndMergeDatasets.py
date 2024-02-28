@@ -27,6 +27,9 @@ if __name__ == '__main__':
         print('Merging datasets')
 
         path = './datasets/Dataset-ViPARE-' + str(roboflow_version)
+        # safe rename for VIPARE dataset and complete merge
+        if os.path.exists(path + "/valid"):
+            os.rename(path + "/valid", path + "/val")
         shutil.copy("./datasets/data.yaml", path + "/data.yaml")
         du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './TACO/data/yolo', './mergeDataset')
 
