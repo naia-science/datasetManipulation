@@ -32,7 +32,7 @@ def dl_roboflow_dataset(ver):
     os.rename(f"./datasets/Dataset-ViPARE-{ver}/data.yaml", f"./datasets/data.yaml")
 
 
-def display_test_image(roboVer, path):
+def display_test_image_roboflow(roboVer, path):
     """Displays a random image from the Roboflow dataset."""
     im_path = os.path.join(path, 'Dataset-ViPARE-' + str(roboVer) + '/valid/images/')
     lab_path = os.path.join(path, 'Dataset-ViPARE-' + str(roboVer) + '/valid/labels/')
@@ -387,3 +387,65 @@ def mergeDatasets(dataset1, dataset2, output):
                 f.write("test: " + output + "/test\n")
             else:
                 f.write(line)
+
+# -------------------------------------------------  Display util functions -------------------------------------------------
+def colorFromClass(classID):
+    """Returns a color for a class ID. Colors are selected among the list available here : https://matplotlib.org/stable/gallery/color/named_colors.html"""
+    match classID:
+        case '0':
+            return 'lightgray', 'darkgray'
+        case '1':
+            return 'goldenrod', 'darkgoldenrod'
+        case '2':
+            return 'mediumblue', 'darkblue'
+        case '3':
+            return 'beige', 'darkkhaki'
+        case '4':
+            return 'lightskyblue', 'deepskyblue'
+        case '5':
+            return 'seagreen', 'darkgreen'
+        case '6':
+            return 'magenta', 'darkmagenta'
+        case '7':
+            return 'yellow', 'goldenrod'
+        case '8':
+            return 'blueviolet', 'rebeccapurple'
+        case '9':
+            return 'darkslategrey', 'black' 
+        case '10':
+            return 'darkorange', 'peru'
+        case '11':
+            return 'brown', 'darkred'
+        case _:
+            #here just in case, but should not happen
+            return 'red', 'darkred'
+
+def display_test_image(path_to_dataset):
+    """Displays a random image from the merged dataset, or classic yolo dataset with a 'val' dir."""
+    im_path = path_to_dataset + '/val/images/'
+    lab_path = path_to_dataset + '/val/labels/'
+
+    #get random image from image directory
+    image = random.choice(os.listdir(im_path))
+
+    #get associated label by removing .jpg, adding .txt
+    label = os.path.splitext(image)[0] + '.txt'
+
+    #display image at im_path + image using plt
+    print(im_path + image)
+    img = mpimg.imread(im_path + image)
+    imgplot = plt.imshow(img)
+
+    #draw segmentation from label at lab_path + label using plt - it is a polygon, not a rectangle !
+
+    with open(lab_path + label, 'r') as f:
+        for line in f:
+            polygon = line.split()[1:]
+            polygon = [float(i) for i in polygon]
+
+            #reshape polygon to be a list of tuples, each tuple being a point and knowing polygon values are between 0 and 1, need to multiply by image size
+            polygon = [(int(polygon[i]*img.shape[1]), int(polygon[i+1]*img.shape[0])) for i in range(0, len(polygon), 2)]
+
+            #draw polygon - TODO : use different color depending on class, add transparency for a better display?
+            faceColor, contourColor = colorFromClass(line.split()[0])
+            plt.fill(*zip(*polygon), facecolor=faceColor, edgecolor=contourColor, alpha=0.7)
