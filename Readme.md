@@ -11,3 +11,5 @@ Enables to get, merge and format the following datasets:
  pip install -r requirements.txt
  python getAndMergeDatasets.py
  ```
+
+ You can check the merge results and display images using the example jupyter notebook Notebooks/exampleAndCheck.ipynb
