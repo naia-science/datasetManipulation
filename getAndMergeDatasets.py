@@ -30,6 +30,16 @@ if __name__ == '__main__':
         # safe rename for VIPARE dataset and complete merge
         if os.path.exists(path + "/valid"):
             os.rename(path + "/valid", path + "/val")
+            with open('./datasets/data.yaml', 'r') as f:
+                lines = f.readlines()
+            with open('./datasets/data.yaml', 'w') as f:
+                for line in lines:
+                    if "valid" in line :
+                        f.write('val: ./Dataset-ViPARE-' + str(roboflow_version) + '/val/images')
+                    else :
+                        f.write(line)
+            
+
         shutil.copy("./datasets/data.yaml", path + "/data.yaml")
         du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './TACO/data/yolo', './mergeDataset')
 
