@@ -10,20 +10,23 @@ if __name__ == '__main__':
     delete_datasets_after_merge = False
 
     if not (os.path.exists('./datasets')):
-        print('Downloading Roboflow dataset')
+        os.mkdir('./datasets')
+
+    if not (os.path.exists('./datasets/Dataset-ViPARE-' + str(roboflow_version) + '/images')):
+        print('Downloading Roboflow dataset version ' + str(roboflow_version) + '...')
         du.dl_roboflow_dataset(roboflow_version)
 
-    if not (os.path.exists('./TACO')):
+    if not (os.path.exists('./datasets/TACO')):
         print('Downloading TACO dataset')
         du.dl_taco_dataset()
 
-    if not (os.path.exists('./TACO/data/yolo')):
+    if not (os.path.exists('./datasetsTACO/data/yolo')):
         print('Converting TACO dataset to YOLO format')
-        du.cocoToYolo('./TACO/data')
-        du.split_dataset('./TACO/data/yolo', 0.7, 0.2, 0.1)
-        du.tacoClassesToNaia('./TACO/data/yolo/')
+        du.cocoToYolo('./datasets/TACO/data')
+        du.split_dataset('./datasets/TACO/data/yolo', 0.7, 0.2, 0.1)
+        du.tacoClassesToNaia('./datasets/TACO/data/yolo/')
 
-    if not (os.path.exists('./mergeDataset')):
+    if not (os.path.exists('./datasets/mergeDataset')):
         print('Merging datasets')
 
         path = './datasets/Dataset-ViPARE-' + str(roboflow_version)
@@ -41,7 +44,7 @@ if __name__ == '__main__':
             
 
         shutil.copy("./datasets/data.yaml", path + "/data.yaml")
-        du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './TACO/data/yolo', './mergeDataset')
+        du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './datasets/TACO/data/yolo', './datasets/mergeDataset')
 
     if delete_datasets_after_merge:
         print('Deleting datasets')
