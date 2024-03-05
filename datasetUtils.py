@@ -83,13 +83,16 @@ def dl_taco_dataset():
     os.system('python download.py')
     os.chdir('..')
 
+    # move TACO directory to datasets
+    os.rename('./TACO/', './datasets/TACO')
+
 def delete_TACO_dataset():
     """Deletes the TACO dataset."""
-    os.system('rm -rf ./TACO/')
+    os.system('rm -rf ./datasets/TACO/')
 
 def display_test_image_seg_TACO():
     """Displays a random image from the TACO dataset with its segmentation."""
-    dataset_path = './TACO/data'
+    dataset_path = './datasets/TACO/data'
     anns_file_path = dataset_path + '/' + 'annotations.json'
     
     # Read annotations
@@ -380,11 +383,11 @@ def mergeDatasets(dataset1, dataset2, output):
     with open(output + "/data.yaml", "w") as f:
         for line in lines:
             if "train:" in line:
-                f.write("train: " + output + "/train\n")
+                f.write("train: ./train\n")
             elif "val:" in line:
-                f.write("val: " + output + "/val\n")
+                f.write("val: ./val\n")
             elif "test:" in line:
-                f.write("test: " + output + "/test\n")
+                f.write("test: ./test\n")
             else:
                 f.write(line)
 
