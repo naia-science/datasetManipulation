@@ -3,7 +3,7 @@ import datasetUtils as du
 
 import os
 import shutil
-
+import argparse
 
 def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath):
     # Select roboflow version here
@@ -67,9 +67,16 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
         du.delete_TACO_dataset()
 
 if __name__ == '__main__':
-    roboflow_version = 4
-    delete_datasets_after_merge = False
-    get_all_fresh_datasets = False
-    outputPath = './datasets/mergeDataset'
-    #TODO : add arge parser to get roboflow_version and delete_datasets_after_merge and get_all_fresh_datasets from command line
+    parser = argparse.ArgumentParser(description='Download and merge datasets')
+    parser.add_argument('--version', type=int, default=4, help='Roboflow version to download')
+    parser.add_argument('--delete', type=bool, default=False, help='Delete base datasets used for merge after merge')
+    parser.add_argument('--fresh', type=bool, default=False, help='Delete all datasets before downloading, to ensure a fresh download')
+    parser.add_argument('--output', type=str, default='./datasets/mergeDataset', help='Output path for merged dataset')
+
+    args = parser.parse_args()
+    roboflow_version = args.version
+    delete_datasets_after_merge = args.delete
+    get_all_fresh_datasets = args.fresh
+    outputPath = args.output
+
     launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath)
