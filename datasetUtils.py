@@ -391,6 +391,10 @@ def mergeDatasets(dataset1, dataset2, output):
             else:
                 f.write(line)
 
+def delete_merged_datasets(output):
+    """Deletes the merged datasets."""
+    shutil.rmtree(output)
+
 # -------------------------------------------------  Display util functions -------------------------------------------------
 def colorFromClass(classID):
     """Returns a color for a class ID. Colors are selected among the list available here : https://matplotlib.org/stable/gallery/color/named_colors.html"""
