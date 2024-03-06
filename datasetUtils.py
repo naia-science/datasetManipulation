@@ -72,8 +72,8 @@ def delete_roboflow_dataset(ver):
 def dl_taco_dataset():
     """Downloads the TACO dataset."""
     # clone repo, install requirements
-    os.system('git clone https://github.com/pedropro/TACO.git')
-    os.system('pip install -r ./TACO/requirements.txt')
+    os.system('git clone https://github.com/pedropro/TACO.git --quiet')
+    os.system('pip install -r ./TACO/requirements.txt --quiet')
     
     # replace download.py for a paralellized + functional version from pr
     os.system('rm -rf ./TACO/download.py')
@@ -390,6 +390,10 @@ def mergeDatasets(dataset1, dataset2, output):
                 f.write("test: ./test\n")
             else:
                 f.write(line)
+
+def delete_merged_datasets(output):
+    """Deletes the merged datasets."""
+    shutil.rmtree(output)
 
 # -------------------------------------------------  Display util functions -------------------------------------------------
 def colorFromClass(classID):
