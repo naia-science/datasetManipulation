@@ -72,7 +72,7 @@ def delete_roboflow_dataset(ver):
 def dl_taco_dataset():
     """Downloads the TACO dataset."""
     # clone repo, install requirements
-    os.system('git clone https://github.com/pedropro/TACO.git')
+    os.system('git clone https://github.com/pedropro/TACO.git --quiet')
     os.system('pip install -r ./TACO/requirements.txt')
     
     # replace download.py for a paralellized + functional version from pr
