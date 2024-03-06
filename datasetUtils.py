@@ -73,7 +73,7 @@ def dl_taco_dataset():
     """Downloads the TACO dataset."""
     # clone repo, install requirements
     os.system('git clone https://github.com/pedropro/TACO.git --quiet')
-    os.system('pip install -r ./TACO/requirements.txt')
+    os.system('pip install -r ./TACO/requirements.txt --quiet')
     
     # replace download.py for a paralellized + functional version from pr
     os.system('rm -rf ./TACO/download.py')
