@@ -31,7 +31,7 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
     else:
         print('TACO dataset already exists')
 
-    if not (os.path.exists('./datasetsTACO/data/yolo')):
+    if not (os.path.exists('./datasets/TACO/data/yolo')):
         print('Converting TACO dataset to YOLO format')
         du.cocoToYolo('./datasets/TACO/data')
         du.split_dataset('./datasets/TACO/data/yolo', 0.7, 0.2, 0.1)
