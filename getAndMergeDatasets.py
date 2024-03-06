@@ -39,7 +39,7 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
     else:
         print('TACO dataset already in YOLO format')
 
-    if not (os.path.exists('./datasets/mergeDataset')):
+    if not (os.path.exists(outputPath)):
         print('Merging datasets')
 
         path = './datasets/Dataset-ViPARE-' + str(roboflow_version)
@@ -57,7 +57,7 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
             
 
         shutil.copy("./datasets/data.yaml", path + "/data.yaml")
-        du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './datasets/TACO/data/yolo', './datasets/mergeDataset')
+        du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './datasets/TACO/data/yolo', outputPath)
     else:
         print('Merged dataset already exists, not modifying it')
 
