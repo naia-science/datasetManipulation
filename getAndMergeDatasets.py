@@ -63,7 +63,7 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
 
     if delete_datasets_after_merge:
         print('Deleting datasets')
-        du.delete_roboflow_dataset()
+        du.delete_roboflow_dataset(roboflow_version)
         du.delete_TACO_dataset()
 
 if __name__ == '__main__':
