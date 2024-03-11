@@ -19,7 +19,7 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
     else:
         print('Datasets folder already exists')
 
-    if not (os.path.exists('./datasets/Dataset-ViPARE-' + str(roboflow_version) + '/images')):
+    if not (os.path.exists('./datasets/Dataset-ViPARE-' + str(roboflow_version))):
         print('Downloading Roboflow dataset version ' + str(roboflow_version) + '...')
         du.dl_roboflow_dataset(roboflow_version)
     else:
