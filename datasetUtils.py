@@ -391,6 +391,68 @@ def mergeDatasets(dataset1, dataset2, output):
             else:
                 f.write(line)
 
+    # append a 'taco status' to the data.yaml file, to know which dataset was used
+    with open(output + "/data.yaml", "a") as f:
+        f.write("\n#dataset status\n")
+        f.write("taco: 3 split\n")
+        f.write("roboflow: see above\n")
+
+def mergeTacoDatasetAsTrain(sourceDataset, tacoPath, output):
+    """Merges two datasets to the output directory."""
+
+    if not os.path.exists(output):
+        os.makedirs(output)
+
+    # Copy the datasets val, train and test directories to the output directory
+    for directory in ["train", "test", "val"]:
+        if not os.path.exists(output + "/" + directory):
+            os.makedirs(output + "/" + directory)
+        if os.path.exists(sourceDataset + "/" + directory):
+
+            for type in ["images", "labels"]:
+                if not os.path.exists(output + "/" + directory + "/" + type):
+                    os.makedirs(output + "/" + directory + "/" + type)
+                accdir = '/' + directory + '/' + type
+                for file in os.listdir(sourceDataset + accdir):
+                    shutil.copy(sourceDataset + accdir + "/" + file, output + accdir + "/" + file)
+        
+        # copy the second dataset, if it exists and moving everything from dataset2/val to output/val, knowing output/val already exists
+        if os.path.exists(tacoPath + "/" + directory):
+            for type in ["images", "labels"]:
+                if not os.path.exists(output + "/" + directory + "/" + type):
+                    os.makedirs(output + "/" + directory + "/" + type)
+                accdir = '/' + directory + '/' + type
+
+                for file in os.listdir(tacoPath + accdir):
+                    shutil.copy(tacoPath + accdir + "/" + file, output + "/train/" + type + "/" + file)
+        
+    
+    if os.path.exists(sourceDataset + "/data.yaml"):
+        shutil.copy(sourceDataset + "/data.yaml", output + "/data.yaml")
+    elif os.path.exists(tacoPath + "/data.yaml"):
+        shutil.copy(tacoPath + "/data.yaml", output + "/data.yaml")
+    
+    # replace the train, val and test directories in the data.yaml file with the new ones
+    with open(output + "/data.yaml", "r") as f:
+        lines = f.readlines()
+    with open(output + "/data.yaml", "w") as f:
+        for line in lines:
+            if "train:" in line:
+                f.write("train: ./train\n")
+            elif "val:" in line:
+                f.write("val: ./val\n")
+            elif "test:" in line:
+                f.write("test: ./test\n")
+            else:
+                f.write(line)
+
+    # append a 'taco status' to the data.yaml file, to know which dataset was used
+    with open(output + "/data.yaml", "a") as f:
+        f.write("\n#dataset status\n")
+        f.write("taco: train only\n")
+        f.write("roboflow: see above\n")
+
+
 def delete_merged_datasets(output):
     """Deletes the merged datasets."""
     shutil.rmtree(output)
