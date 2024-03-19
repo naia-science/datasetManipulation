@@ -5,8 +5,7 @@ import os
 import shutil
 import argparse
 
-def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath):
-    # Select roboflow version here
+def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath, tacoTrainOnly):
 
     if get_all_fresh_datasets:
         print('Deleting datasets')
@@ -57,7 +56,10 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
             
 
         shutil.copy("./datasets/data.yaml", path + "/data.yaml")
-        du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './datasets/TACO/data/yolo', outputPath)
+        if (tacoTrainOnly):
+            du.mergeTacoDatasetAsTrain('./datasets/Dataset-ViPARE-' + str(roboflow_version), './datasets/TACO/data/yolo', outputPath)
+        else :
+            du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './datasets/TACO/data/yolo', outputPath)
     else:
         print('Merged dataset already exists, not modifying it')
 
@@ -72,11 +74,13 @@ if __name__ == '__main__':
     parser.add_argument('--delete', type=bool, default=False, help='Delete base datasets used for merge after merge')
     parser.add_argument('--fresh', type=bool, default=False, help='Delete all datasets before downloading, to ensure a fresh download')
     parser.add_argument('--output', type=str, default='./datasets/mergeDataset', help='Output path for merged dataset')
+    parser.add_argument('--tacoTrainOnly', type=bool, default=False, help='Use the TACO dataset only in training directory')
 
     args = parser.parse_args()
     roboflow_version = args.version
     delete_datasets_after_merge = args.delete
     get_all_fresh_datasets = args.fresh
     outputPath = args.output
+    tacoTrainOnly = args.tacoTrainOnly
 
-    launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath)
+    launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath, tacoTrainOnly)
