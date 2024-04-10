@@ -20,7 +20,11 @@ import shutil
 
 def dl_roboflow_dataset(ver):
     """Downloads the Roboflow dataset."""
-    rf = Roboflow(api_key="REDACTED")
+    # check if file roboflowAPIKey.txt exists and read the key from it
+    if os.path.exists("roboflowAPIKey.txt"):
+        with open("roboflowAPIKey.txt", "r") as f:
+            api_key = f.read()
+    rf = Roboflow(api_key=api_key)
     project = rf.workspace("naia-science").project("dataset-vipare")
     dataset = project.version(ver).download("yolov8")
 
