@@ -5,7 +5,7 @@ import os
 import shutil
 import argparse
 
-def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath, tacoTrainOnly):
+def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath, tacoTrainOnly, dlRoboonly):
 
     if get_all_fresh_datasets:
         print('Deleting datasets')
@@ -23,6 +23,9 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
         du.dl_roboflow_dataset(roboflow_version)
     else:
         print('Roboflow dataset version ' + str(roboflow_version) + ' already exists')
+
+    if dlRoboonly:
+        return
 
     if not (os.path.exists('./datasets/TACO')):
         print('Downloading TACO dataset')
@@ -75,6 +78,7 @@ if __name__ == '__main__':
     parser.add_argument('--fresh', type=bool, default=False, help='Delete all datasets before downloading, to ensure a fresh download')
     parser.add_argument('--output', type=str, default='./datasets/mergeDataset', help='Output path for merged dataset')
     parser.add_argument('--tacoTrainOnly', type=bool, default=False, help='Use the TACO dataset only in training directory')
+    parser.add_argument('--roboflowDLOnly', type=bool, default=False, help='Just download the roboflow dataset, do not merge it with TACO dataset')
 
     args = parser.parse_args()
     roboflow_version = args.version
@@ -82,5 +86,5 @@ if __name__ == '__main__':
     get_all_fresh_datasets = args.fresh
     outputPath = args.output
     tacoTrainOnly = args.tacoTrainOnly
-
-    launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath, tacoTrainOnly)
+    dlonly = args.roboflowDLOnly
+    launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath, tacoTrainOnly, dlonly)
