@@ -5,34 +5,62 @@ import os
 import shutil
 import argparse
 
-def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath, tacoTrainOnly, dlRoboonly):
-
-    if get_all_fresh_datasets:
-        print('Deleting datasets')
-        du.delete_roboflow_dataset()
-        du.delete_TACO_dataset()
+def get_all_fresh_dataset(outputPath, roboflow_version):
+    """
+    Description:
+        Get all datasets as fresh installs
+    Usage:
+        get_all_fresh_dataset(outputPath)
+    Arguments:
+        outputPath: Output path for merged dataset
+    """
+    print('Deleting previous versions of datasets, starting fresh...')
+    du.delete_roboflow_dataset(roboflow_version)
+    du.delete_TACO_dataset()
+    try:
         du.delete_merged_datasets(outputPath)
+    except:
+        print('No merged datasets to delete')
 
-    if not (os.path.exists('./datasets')):
-        os.mkdir('./datasets')
-    else:
-        print('Datasets folder already exists')
-
+def dl_roboflow_dataset(roboflow_version):
+    """
+    Description:
+        Download the Roboflow dataset
+    Usage:
+        dl_roboflow_dataset(roboflow_version)
+    Arguments:
+        roboflow_version: Roboflow version to download
+    """
     if not (os.path.exists('./datasets/Dataset-ViPARE-' + str(roboflow_version))):
         print('Downloading Roboflow dataset version ' + str(roboflow_version) + '...')
         du.dl_roboflow_dataset(roboflow_version)
     else:
         print('Roboflow dataset version ' + str(roboflow_version) + ' already exists')
 
-    if dlRoboonly:
-        return
-
+def dl_TACO_dataset():
+    """
+    Description:
+        Download the TACO dataset
+    Usage:
+        dl_TACO_dataset()
+    Arguments:
+        None
+    """
     if not (os.path.exists('./datasets/TACO')):
         print('Downloading TACO dataset')
         du.dl_taco_dataset()
     else:
         print('TACO dataset already exists')
 
+def convert_TACO_dataset():
+    """
+    Description:
+        Convert the TACO dataset to YOLO format
+    Usage:
+        convert_TACO_dataset()
+    Arguments:
+        None
+    """
     if not (os.path.exists('./datasets/TACO/data/yolo')):
         print('Converting TACO dataset to YOLO format')
         du.cocoToYolo('./datasets/TACO/data')
@@ -41,6 +69,17 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
     else:
         print('TACO dataset already in YOLO format')
 
+def merge_datasets(roboflow_version, outputPath, tacoTrainOnly):
+    """
+    Description:
+        Merge the downloaded datasets
+    Usage:
+        merge_datasets(roboflow_version, outputPath, tacoTrainOnly)
+    Arguments:
+        roboflow_version: Roboflow version to merge
+        outputPath: Output path for merged dataset
+        tacoTrainOnly: Use the TACO dataset only in training directory
+    """
     if not (os.path.exists(outputPath)):
         print('Merging datasets')
 
@@ -59,19 +98,43 @@ def launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_
             
 
         shutil.copy("./datasets/data.yaml", path + "/data.yaml")
-        if (tacoTrainOnly):
+        if tacoTrainOnly:
             du.mergeTacoDatasetAsTrain('./datasets/Dataset-ViPARE-' + str(roboflow_version), './datasets/TACO/data/yolo', outputPath)
         else :
             du.mergeDatasets('./datasets/Dataset-ViPARE-' + str(roboflow_version), './datasets/TACO/data/yolo', outputPath)
     else:
         print('Merged dataset already exists, not modifying it')
 
-    if delete_datasets_after_merge:
-        print('Deleting datasets')
-        du.delete_roboflow_dataset(roboflow_version)
-        du.delete_TACO_dataset()
+def delete_datasets_after_merge():
+    """
+    Description:
+        Delete the base datasets used for merge after merge
+    Usage:
+        delete_datasets_after_merge()
+    Arguments:
+        None
+    """
+    print('Deleting datasets')
+    du.delete_roboflow_dataset()
+    du.delete_TACO_dataset()
 
 if __name__ == '__main__':
+    """
+    Description:
+        Main interface to download and merge datasets
+    Usage:
+        python getAndMergeDatasets.py --version 4 --delete True --fresh True --output ./datasets/mergeDataset --tacoTrainOnly False --roboflowDLOnly False
+
+    Arguments:
+        --version: Roboflow version to download
+        --delete: Delete base datasets used for merge after merge
+        --fresh: Delete all datasets before downloading, to ensure a fresh download
+        --output: Output path for merged dataset
+        --tacoTrainOnly: Use the TACO dataset only in training directory
+        --roboflowDLOnly: Just download the roboflow dataset, do not merge it with TACO dataset
+
+    """
+
     parser = argparse.ArgumentParser(description='Download and merge datasets')
     parser.add_argument('--version', type=int, default=4, help='Roboflow version to download')
     parser.add_argument('--delete', type=bool, default=False, help='Delete base datasets used for merge after merge')
@@ -87,4 +150,24 @@ if __name__ == '__main__':
     outputPath = args.output
     tacoTrainOnly = args.tacoTrainOnly
     dlonly = args.roboflowDLOnly
-    launch_full_download(roboflow_version, delete_datasets_after_merge, get_all_fresh_datasets, outputPath, tacoTrainOnly, dlonly)
+
+    if get_all_fresh_datasets:
+        get_all_fresh_dataset(outputPath, roboflow_version)
+    
+    if not (os.path.exists('./datasets')):
+        os.mkdir('./datasets')
+    else:
+        print('Datasets folder already exists')
+
+    dl_roboflow_dataset(roboflow_version)
+
+    if not dlonly:
+
+        dl_TACO_dataset()
+
+        convert_TACO_dataset()
+
+        merge_datasets(roboflow_version, outputPath, tacoTrainOnly)
+
+        if delete_datasets_after_merge:
+            delete_datasets_after_merge()
