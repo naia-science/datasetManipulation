@@ -19,7 +19,14 @@ import shutil
 # ------------------------------------------------- Get Roboflow dataset functions -------------------------------------------------
 
 def dl_roboflow_dataset(ver):
-    """Downloads the Roboflow dataset."""
+    """
+    Description:
+      Downloads the Roboflow dataset.
+    Usage:
+      dl_roboflow_dataset(ver)
+    Arguments:
+      ver: Roboflow version to download
+    """
     # check if file roboflowAPIKey.txt exists and read the key from it, first line only
     api_key = ""
     if os.path.exists("./roboflowAPIkey.txt"):
@@ -41,7 +48,15 @@ def dl_roboflow_dataset(ver):
 
 
 def display_test_image_roboflow(roboVer, path):
-    """Displays a random image from the Roboflow dataset."""
+    """
+    Description:
+        Displays a random image from the Roboflow dataset.
+    Usage:
+        display_test_image_roboflow(roboVer, path)
+    Arguments:
+        roboVer: Roboflow version to display
+        path: Path to the Roboflow dataset
+    """
     im_path = os.path.join(path, 'Dataset-ViPARE-' + str(roboVer) + '/valid/images/')
     lab_path = os.path.join(path, 'Dataset-ViPARE-' + str(roboVer) + '/valid/labels/')
     
@@ -72,13 +87,27 @@ def display_test_image_roboflow(roboVer, path):
 
 
 def delete_roboflow_dataset(ver):
-    """Deletes the Roboflow dataset."""
+    """
+    Description:
+        Deletes the Roboflow dataset.
+    Usage:
+        delete_roboflow_dataset(ver)
+    Arguments:
+        ver: Roboflow version to delete
+    """
     os.system(f'rm -rf ./datasets/Dataset-ViPARE-{ver}')
 
 # ------------------------------------------------- Get TACO dataset functions -------------------------------------------------
     
 def dl_taco_dataset():
-    """Downloads the TACO dataset."""
+    """
+    Description:
+        Downloads the TACO dataset.
+    Usage:
+        dl_taco_dataset()
+    Arguments:
+        None
+    """
     # clone repo, install requirements
     os.system('git clone https://github.com/pedropro/TACO.git --quiet')
     os.system('pip install -r ./TACO/requirements.txt --quiet')
@@ -95,11 +124,25 @@ def dl_taco_dataset():
     os.rename('./TACO/', './datasets/TACO')
 
 def delete_TACO_dataset():
-    """Deletes the TACO dataset."""
+    """
+    Description:
+        Deletes the TACO dataset.
+    Usage:
+        delete_TACO_dataset()
+    Arguments:
+        None
+    """
     os.system('rm -rf ./datasets/TACO/')
 
 def display_test_image_seg_TACO():
-    """Displays a random image from the TACO dataset with its segmentation."""
+    """
+    Description:
+        Displays a random image from the TACO dataset with its segmentation.
+    Usage:
+        display_test_image_seg_TACO()
+    Arguments:
+        None
+    """
     dataset_path = './datasets/TACO/data'
     anns_file_path = dataset_path + '/' + 'annotations.json'
     
@@ -180,7 +223,14 @@ def display_test_image_seg_TACO():
 # -------------------------------------------------  COCO to YOLO util functions -------------------------------------------------
 
 def cocoToYolo(dir_path):
-    """Converts the COCO dataset at dir_path to Yolov8 format."""
+    """
+    Description:
+        Converts the COCO dataset at dir_path to Yolov8 format.
+    Usage:
+        cocoToYolo(dir_path)
+    Arguments:
+        dir_path: Path to the COCO dataset
+    """
     import os
     import json
     import cv2
@@ -269,13 +319,30 @@ def cocoToYolo(dir_path):
     print('Done!')
 
 def split_dataset(dir_path, train_ratio, test_ratio, val_ratio):
-    """Splits the dataset into train, test and validation sets."""
+    """
+    Description:
+        Splits the dataset into train, test and validation sets.
+    Usage:
+        split_dataset(dir_path, train_ratio, test_ratio, val_ratio)
+    Arguments:
+        dir_path: Path to the dataset
+        train_ratio: Ratio of the training set
+        test_ratio: Ratio of the test set
+        val_ratio: Ratio of the validation set
+    """
     splitfolders.ratio(dir_path, output=dir_path, seed=1337, ratio=(train_ratio, test_ratio, val_ratio))
 
 # -------------------------------------------------  classes Adjustment util functions -------------------------------------------------
     
 def tacoClassMatch(tacoClassID):
-    """Matches the TACO class ID to the Naia class ID."""
+    """
+    Description:
+        Matches the TACO class ID to the Naia class ID.
+    Usage:
+        tacoClassMatch(tacoClassID)
+    Arguments:
+        tacoClassID: TACO class ID
+    """
 
     # May have to be updated if Naia classes or TACO classes are changed
 
@@ -329,7 +396,14 @@ def tacoClassMatch(tacoClassID):
 
 
 def tacoClassesToNaia(path_to_Yolo):
-    """Takes the path to the Yolo dataset, and changes the class number in the labels files to match the Naia classes."""
+    """
+    Description:
+        Takes the path to the Yolo dataset, and changes the class number in the labels files to match the Naia classes.
+    Usage:
+        tacoClassesToNaia(path_to_Yolo)
+    Arguments:
+        path_to_Yolo: Path to the Yolo dataset
+    """
     # for train, test and val directories in yolo, open their subdirectory "labels".
     # for each file in the labels directories, open it, and for each line in the file, convert the taco class to a Naia class
     # (change the class number using the tacoClassMatch function)
@@ -351,7 +425,16 @@ def tacoClassesToNaia(path_to_Yolo):
 # -------------------------------------------------  Merge datasets util functions -------------------------------------------------
                     
 def mergeDatasets(dataset1, dataset2, output):
-    """Merges two datasets to the output directory."""
+    """
+    Description:
+        Merges two datasets to the output directory.
+    Usage:
+        mergeDatasets(dataset1, dataset2, output)
+    Arguments:
+        dataset1: Path to the first dataset
+        dataset2: Path to the second dataset
+        output: Path to the output directory
+    """
 
     if not os.path.exists(output):
         os.makedirs(output)
@@ -406,7 +489,16 @@ def mergeDatasets(dataset1, dataset2, output):
         f.write("roboflow: see above\n")
 
 def mergeTacoDatasetAsTrain(sourceDataset, tacoPath, output):
-    """Merges two datasets to the output directory."""
+    """
+    Description:
+        Merges a dataset & TACO to the output directory, using the TACO dataset for the training set only.
+    Usage:
+        mergeTacoDatasetAsTrain(sourceDataset, tacoPath, output)
+    Arguments:
+        sourceDataset: Path to the first dataset
+        tacoPath: Path to the TACO dataset
+        output: Path to the output directory
+    """
 
     if not os.path.exists(output):
         os.makedirs(output)
@@ -462,12 +554,26 @@ def mergeTacoDatasetAsTrain(sourceDataset, tacoPath, output):
 
 
 def delete_merged_datasets(output):
-    """Deletes the merged datasets."""
+    """
+    Description:
+        Deletes the merged datasets.
+    Usage:
+        delete_merged_datasets(output)
+    Arguments:
+        output: Path to the output directory
+    """
     shutil.rmtree(output)
 
 # -------------------------------------------------  Display util functions -------------------------------------------------
 def colorFromClass(classID):
-    """Returns a color for a class ID. Colors are selected among the list available here : https://matplotlib.org/stable/gallery/color/named_colors.html"""
+    """
+    Description:
+        Returns a color for a class ID. Colors are selected among the list available here : https://matplotlib.org/stable/gallery/color/named_colors.html
+    Usage:
+        colorFromClass(classID)
+    Arguments:
+        classID: Class ID
+    """
     match classID:
         case '0':
             return 'lightgray', 'darkgray'
@@ -498,7 +604,14 @@ def colorFromClass(classID):
             return 'red', 'darkred'
 
 def display_test_image(path_to_dataset):
-    """Displays a random image from the merged dataset, or classic yolo dataset with a 'val' dir."""
+    """
+    Description:
+        Displays a random image from the merged dataset, or classic yolo dataset with a 'val' dir.
+    Usage:
+        display_test_image(path_to_dataset)
+    Arguments:
+        path_to_dataset: Path to the dataset
+    """
     im_path = path_to_dataset + '/val/images/'
     lab_path = path_to_dataset + '/val/labels/'
 
