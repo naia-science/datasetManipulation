@@ -114,3 +114,14 @@ def split_large_images(im_dir, max_size=1280):
     
     # returns the last ones for display
     return imgs, new_anns
+
+
+if __name__ == "__main__":
+    # get arguments from command line, directory to split, and max size
+    import argparse
+    parser = argparse.ArgumentParser(description="Split large images into smaller ones")
+    parser.add_argument("im_dir", type=str, help="Path to image directory to split")
+    parser.add_argument("--max_size", type=int, default=1280, help="Maximum size of images to split")
+    args = parser.parse_args()
+
+    split_large_images(args.im_dir, args.max_size)
