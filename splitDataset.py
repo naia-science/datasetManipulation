@@ -1,4 +1,5 @@
 import numpy as np
+from functools import reduce
 import cv2
 
 def clip_coords(coords):
@@ -26,7 +27,7 @@ def split_img(img, ann, max_size=1280):
             for hc in hcoords:
                 # split images
                 imgs.append(img[wc[0]:wc[1], hc[0]:hc[1]])
-                new_ann = []
+                new_ann = {}
                 xymin = np.array([wc[0]/w, hc[0]/h])[::-1]
                 xyscale = np.array([w/(wc[1]-wc[0]), h/(hc[1]-hc[0])])[::-1]
                 # get ann coords
@@ -36,7 +37,7 @@ def split_img(img, ann, max_size=1280):
                     coords *= xyscale
                     coords = clip_coords(coords)
                     if coords is not None:
-                        new_ann.append(coords)
+                        new_ann[i] = coords
                 new_anns.append(new_ann)
         
         return imgs, new_anns
@@ -103,8 +104,9 @@ def split_large_images(im_dir, max_size=1280):
             txt_file = new_label_dir / (name + ".txt")
             
             cls = l["cls"]
-            for i, s in enumerate(l["segments"]):
-                line = (int(cls[i]), *s.reshape(-1))
+            for k, v in new_ann.items():
+                v = v.flatten()
+                line = (int(cls[k]), *v)
                 texts.append(("%g " * len(line)).rstrip() % line)
             if texts:
                 with open(txt_file, "a") as f:
