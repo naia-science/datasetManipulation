@@ -16,7 +16,9 @@ def split_img(img, ann, max_size=1280):
     nb_splits_w, nb_splits_h = w // max_size, h // max_size
     if nb_splits_w == 0 and nb_splits_h == 0:
         # no split, return just the basic image
-        return [img], [ann]
+        # we need to convert the ann to dictionnary to match the expected output
+        new_ann = {i:a for i,a in enumerate(ann)}
+        return [img], [new_ann]
     else:
         nw, nh = int(w / (nb_splits_w + 1)), int(h / (nb_splits_h + 1))
         wcoords = [(i * nw, (i+1) * nw) for i in range(nb_splits_w +1 )]
