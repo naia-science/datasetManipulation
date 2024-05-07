@@ -639,3 +639,41 @@ def display_test_image(path_to_dataset):
             #draw polygon - TODO : use different color depending on class, add transparency for a better display?
             faceColor, contourColor = colorFromClass(line.split()[0])
             plt.fill(*zip(*polygon), facecolor=faceColor, edgecolor=contourColor, alpha=0.7)
+
+
+def display_test_image_any_dir(path):
+    """
+    Description:
+        Displays a random image & its annotations from the given path, must have image & labels subdirectories
+    Usage:
+        display_test_image_any_dir(path)
+    Arguments:
+        path: Path to the dataset
+    """
+    im_path = path + '/images/'
+    lab_path = path + '/labels/'
+
+    #get random image from image directory
+    image = random.choice(os.listdir(im_path))
+
+    #get associated label by removing .jpg, adding .txt
+    label = os.path.splitext(image)[0] + '.txt'
+
+    #display image at im_path + image using plt
+    print(im_path + image)
+    img = mpimg.imread(im_path + image)
+    imgplot = plt.imshow(img)
+
+    #draw segmentation from label at lab_path + label using plt - it is a polygon, not a rectangle !
+
+    with open(lab_path + label, 'r') as f:
+        for line in f:
+            polygon = line.split()[1:]
+            polygon = [float(i) for i in polygon]
+
+            #reshape polygon to be a list of tuples, each tuple being a point and knowing polygon values are between 0 and 1, need to multiply by image size
+            polygon = [(int(polygon[i]*img.shape[1]), int(polygon[i+1]*img.shape[0])) for i in range(0, len(polygon), 2)]
+
+            #draw polygon - TODO : use different color depending on class, add transparency for a better display?
+            faceColor, contourColor = colorFromClass(line.split()[0])
+            plt.fill(*zip(*polygon), facecolor=faceColor, edgecolor=contourColor, alpha=0.7)           
