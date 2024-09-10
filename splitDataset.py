@@ -192,7 +192,7 @@ def split_large_images(im_dir, max_size=1280):
     from ultralytics.utils import LOGGER
 
     # NOTE: add placeholder to pass class index check
-    dataset = YOLODataset(im_dir, data=dict(names=list(range(1000))))
+    dataset = YOLODataset(im_dir, data=dict(names=list(range(10000))))
     if len(dataset.labels[0]["segments"]) > 0:  # if it's segment data
         LOGGER.info("Segmentation labels detected")
     else:
