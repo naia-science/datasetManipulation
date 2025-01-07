@@ -34,6 +34,52 @@ def clip_coords(coords):
         return coords
     else:
         return None
+    
+def remove_zero_area_points(polygon):
+    """
+    Removes points that create zero-area zones in the given polygon.
+    A polygon is represented as a NumPy array of shape (n_points, 2).
+
+    Parameters:
+        polygon (np.ndarray): Input polygon, shape (n_points, 2).
+
+    Returns:
+        np.ndarray: The cleaned polygon with no zero-area zones.
+    """
+    if polygon is None:
+        return None
+    # deduplicate points
+    unique_polygon = []
+    for i, point in enumerate(polygon):
+        if i == 0 or not np.allclose(point, polygon[-1]):
+            unique_polygon.append(point)
+    
+    unique_polygon = np.array(unique_polygon)
+    
+    cleaned_polygon = []
+    n = len(unique_polygon)
+    
+    # remove points in zero area triangles
+    for i in range(n):
+        p_prev = unique_polygon[i - 1]  # Previous point
+        p_curr = unique_polygon[i]      # Current point
+        p_next = unique_polygon[(i + 1) % n]  # Next point (wrap-around)
+
+        # Calculate the signed area of the triangle formed by these three points
+        area = 0.5 * np.abs(
+            p_prev[0] * (p_curr[1] - p_next[1]) +
+            p_curr[0] * (p_next[1] - p_prev[1]) +
+            p_next[0] * (p_prev[1] - p_curr[1])
+        )
+
+        # If the area is non-zero, keep the current point
+        if area > 1e-15:
+            cleaned_polygon.append(p_curr)
+    if len(cleaned_polygon):
+        return np.array(cleaned_polygon)
+    else:
+        return None
+
 
 def get_annotation_properties(annotations):
     """
@@ -159,6 +205,7 @@ def split_img(img, ann, max_size=1280):
                     coords -= xymin
                     coords *= xyscale
                     coords = clip_coords(coords)
+                    coords = remove_zero_area_points(coords)
                     if coords is not None:
                         new_ann[i] = coords
                 new_anns.append(new_ann)
