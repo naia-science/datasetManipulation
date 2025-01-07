@@ -75,7 +75,7 @@ def remove_zero_area_points(polygon):
         # If the area is non-zero, keep the current point
         if area > 1e-15:
             cleaned_polygon.append(p_curr)
-    if len(cleaned_polygon):
+    if len(cleaned_polygon) > 2:
         return np.array(cleaned_polygon)
     else:
         return None
