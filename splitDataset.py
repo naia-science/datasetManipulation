@@ -51,17 +51,20 @@ def remove_zero_area_points(polygon):
     # deduplicate points
     unique_polygon = []
     for i, point in enumerate(polygon):
-        if i == 0 or not np.allclose(point, polygon[-1]):
+        if i == 0 or not np.allclose(point, unique_polygon[-1]):
             unique_polygon.append(point)
     
+    # case where first point = last point
+    if np.allclose(unique_polygon[0], unique_polygon[-1]):
+        unique_polygon = unique_polygon[:-1]
     unique_polygon = np.array(unique_polygon)
     
     cleaned_polygon = []
     n = len(unique_polygon)
-    
     # remove points in zero area triangles
+    prev_idx = -1
     for i in range(n):
-        p_prev = unique_polygon[i - 1]  # Previous point
+        p_prev = unique_polygon[prev_idx]  # Previous point
         p_curr = unique_polygon[i]      # Current point
         p_next = unique_polygon[(i + 1) % n]  # Next point (wrap-around)
 
@@ -75,6 +78,8 @@ def remove_zero_area_points(polygon):
         # If the area is non-zero, keep the current point
         if area > 1e-15:
             cleaned_polygon.append(p_curr)
+            prev_idx = i
+            
     if len(cleaned_polygon) > 2:
         return np.array(cleaned_polygon)
     else:
@@ -209,7 +214,6 @@ def split_img(img, ann, max_size=1280):
                     if coords is not None:
                         new_ann[i] = coords
                 new_anns.append(new_ann)
-        
         return imgs, new_anns
 
 from pathlib import Path
@@ -278,11 +282,11 @@ def split_large_images(im_dir, max_size=1280):
             im = resize_image_cv2(im, max_size=max_size)
             new_anns = [{i:n for i, n in enumerate(new_ann)}]
             imgs = [im]
-    
-        for k, (img, new_ann) in enumerate(zip(imgs, new_anns)):
+        for i, (img, new_ann) in enumerate(zip(imgs, new_anns)):
             total_num_generated += 1
+            
             texts = []
-            name = Path(l["im_file"]).stem + "_" + str(k)
+            name = Path(l["im_file"]).stem + "_" + str(i)
             img_file = new_im_dir / (name + Path(l["im_file"]).suffix)
             txt_file = new_label_dir / (name + ".txt")
             
@@ -295,6 +299,8 @@ def split_large_images(im_dir, max_size=1280):
                 with open(txt_file, "a") as f:
                     f.writelines(text + "\n" for text in texts)
             cv2.imwrite(str(img_file.resolve()), img)
+
+            
     LOGGER.info(f"Generated {total_num_generated} images and labels from {total_num_processed} original images, saved in {save_dir}")
     
     # returns the last ones for display
