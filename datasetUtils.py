@@ -99,40 +99,32 @@ def delete_roboflow_dataset(ver):
 
 # ------------------------------------------------- Get TACO dataset functions -------------------------------------------------
     
-def dl_taco_dataset():
+def dl_taco_dataset(ver = 2):
     """
     Description:
-        Downloads the TACO dataset.
+        Downloads the TACO dataset from roboflow Universe.
     Usage:
-        dl_taco_dataset()
+        dl_taco_dataset(dataset_version)
     Arguments:
         None
     """
-    # clone repo, install requirements
-    os.system('git clone https://github.com/pedropro/TACO.git --quiet')
-    os.system('pip install -r ./TACO/requirements.txt --quiet')
-    
-    # replace download.py for a paralellized + functional version from pr
-    os.system('rm -rf ./TACO/download.py')
-    os.chdir('./TACO/')
-    os.system('git checkout 94031c21be6c6a9db247bf8284a55c96c21cfcf9 download.py')
-    # launch download
-    os.system('python download.py')
-    os.chdir('..')
+    api_key = ""
+    if os.path.exists("./roboflowAPIkey.txt"):
+        with open("roboflowAPIkey.txt", "r") as f:
+            api_key = f.readline().strip()
+    else:
+        print("No Roboflow API key file found, please create a roboflowAPIkey.txt file with your key in it.")
+        return
+    rf = Roboflow(api_key=api_key)
+    project = rf.workspace("naia-science").project("vipare-taco-class-match")
+    dataset = project.version(ver).download("yolov8")
 
-    # move TACO directory to datasets
-    os.rename('./TACO/', './datasets/TACO')
+    # replace the following lines with python calls for creating directories and moving files
+    os.makedirs(f"./datasets/", exist_ok=True)
+    # move the downloaded dataset to the new directory
+    os.rename(f"./Dataset-vipare-taco-class-match-{ver}/", f"./datasets/Dataset-TACO-{ver}/")
 
-def delete_TACO_dataset():
-    """
-    Description:
-        Deletes the TACO dataset.
-    Usage:
-        delete_TACO_dataset()
-    Arguments:
-        None
-    """
-    os.system('rm -rf ./datasets/TACO/')
+
 
 def display_test_image_seg_TACO():
     """
