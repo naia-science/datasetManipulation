@@ -122,7 +122,7 @@ def dl_taco_dataset(ver = 2):
     # replace the following lines with python calls for creating directories and moving files
     os.makedirs(f"./datasets/", exist_ok=True)
     # move the downloaded dataset to the new directory
-    os.rename(f"./Dataset-vipare-taco-class-match-{ver}/", f"./datasets/Dataset-TACO-{ver}/")
+    os.rename(f"./vipare-taco-class-match-{ver}/", f"./datasets/Dataset-TACO-{ver}/")
 
 
 
