@@ -155,12 +155,43 @@ def crop_image_with_margin(image, annotations, global_rect, margin=0.1):
     x_max = min(1, x_max + margin)
     y_max = min(1, y_max + margin)
 
+
     # Convert the normalized coordinates back to absolute pixel coordinates for cropping
     x_min_abs = int(x_min * w)
     y_min_abs = int(y_min * h)
     x_max_abs = int(x_max * w)
     y_max_abs = int(y_max * h)
-    # print(f"img:{h}x{w} new_img:{x_min_abs} {y_min_abs} {x_max_abs} {y_max_abs}")
+
+    # Calculate the aspect ratio of the cropped region
+    aspect_ratio = (x_max_abs - x_min_abs) / (y_max_abs - y_min_abs)
+
+    if aspect_ratio > 2:  # Width is more than twice the height
+        desired_height = (x_max_abs - x_min_abs) / 2
+        y_center = int((y_min_abs + y_max_abs) / 2)
+        half_height = int(desired_height / 2)
+        if y_center - half_height < 0:
+            y_min_abs = 0
+            y_max = min(h, 2 * half_height)
+        elif y_center + half_height > h:
+            y_max_abs = h
+            y_min_abs = max(0, h - 2 * half_height)
+        else:
+            y_min_abs = y_center - half_height
+            y_max_abs = y_center + half_height
+    elif aspect_ratio < 0.5:  # Height is more than twice the width        
+        desired_width = (y_max_abs - y_min_abs) / 2
+        x_center = int((x_min_abs + x_max_abs) / 2)
+        half_width = int(desired_width / 2)
+        if x_center - half_width < 0:
+            x_min_abs = 0
+            x_max_abs = min(1, 2 * half_width)
+        elif x_center + half_width > w:
+            x_max_abs = w
+            x_min_abs = max(0, w - 2 * half_width)
+        else:
+            x_min_abs = x_center - half_width
+            x_max_abs = x_center + half_width
+
 
     # Crop the image
     cropped_image = image[y_min_abs:y_max_abs, x_min_abs:x_max_abs]
@@ -258,6 +289,8 @@ def split_large_images(im_dir, max_size=1280):
     
     total_num_processed = 0
     total_num_generated = 0
+    total_cropped = []
+    total_split = []
     
     for l in tqdm(dataset.labels, total=len(dataset.labels), desc="splitting images"):
         h, w = l["shape"]
@@ -272,12 +305,16 @@ def split_large_images(im_dir, max_size=1280):
         im = cv2.imread(l["im_file"])
         if smallest < 0.01: # threshold for cropping then splitting
             im, new_ann = crop_image_with_margin(im, l["segments"], englobing)
+            total_cropped += [l["im_file"]]
+
             smallest, englobing = get_annotation_properties(new_ann)
         else:
             new_ann = l["segments"]
         
         if smallest < 0.01: # still small
             imgs, new_anns = split_img(im, new_ann)
+            total_cropped.remove(l["im_file"])
+            total_split += [l["im_file"]]
         else:
             im = resize_image_cv2(im, max_size=max_size)
             new_anns = [{i:n for i, n in enumerate(new_ann)}]
@@ -302,7 +339,13 @@ def split_large_images(im_dir, max_size=1280):
 
             
     LOGGER.info(f"Generated {total_num_generated} images and labels from {total_num_processed} original images, saved in {save_dir}")
-    
+    LOGGER.info(f"Num of images  split: {len(total_split)}, num just cropped: {len(total_cropped)}")
+    """print("split:")
+    for i in total_split:
+        print(i)
+    print("cropped:")
+    for i in total_cropped: 
+        print(i)"""
     # returns the last ones for display
     return imgs, new_anns
 
