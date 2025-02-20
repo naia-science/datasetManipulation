@@ -25,7 +25,7 @@ def resize_image_cv2(image, max_size=1280):
         resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
     except:
         print(f"cannot resize image {original_w}x{original_h} to {new_w}x{new_h}")
-        resized_image = image
+        resized_image = None
     return resized_image
 
 
@@ -187,7 +187,7 @@ def crop_image_with_margin(image, annotations, global_rect, margin=0.1):
         half_width = int(desired_width / 2)
         if x_center - half_width < 0:
             x_min_abs = 0
-            x_max_abs = min(1, 2 * half_width)
+            x_max_abs = min(w, 2 * half_width)
         elif x_center + half_width > w:
             x_max_abs = w
             x_min_abs = max(0, w - 2 * half_width)
@@ -320,6 +320,9 @@ def split_large_images(im_dir, max_size=1280):
             total_split += [l["im_file"]]
         else:
             im = resize_image_cv2(im, max_size=max_size)
+            if im is None:
+                print("problem with "+l["im_file"])
+                continue
             new_anns = [{i:n for i, n in enumerate(new_ann)}]
             imgs = [im]
         for i, (img, new_ann) in enumerate(zip(imgs, new_anns)):
