@@ -124,6 +124,31 @@ def dl_taco_dataset(ver = 2):
     # move the downloaded dataset to the new directory
     os.rename(f"./vipare-taco-class-match-{ver}/", f"./datasets/Dataset-TACO-{ver}/")
 
+def dl_robouni_dataset(ver = 1):
+    """
+    Description:
+        Downloads the TACO dataset from roboflow Universe.
+    Usage:
+        dl_taco_dataset(dataset_version)
+    Arguments:
+        None
+    """
+    api_key = ""
+    if os.path.exists("./roboflowAPIkey.txt"):
+        with open("roboflowAPIkey.txt", "r") as f:
+            api_key = f.readline().strip()
+    else:
+        print("No Roboflow API key file found, please create a roboflowAPIkey.txt file with your key in it.")
+        return
+    rf = Roboflow(api_key=api_key)
+    project = rf.workspace("naia-science").project("duplicate-not-to-use-for-labeling-vipare-robouni-objectdetect-2")
+    dataset = project.version(ver).download("yolov8")
+
+    # replace the following lines with python calls for creating directories and moving files
+    os.makedirs(f"./datasets/", exist_ok=True)
+    # move the downloaded dataset to the new directory
+    os.rename(f"./duplicate-not-to-use-for-labeling-vipare-robouni-objectdetect-2-{ver}/", f"./datasets/Dataset-ROBOUNI-{ver}/")
+
 
 
 def display_test_image_seg_TACO():

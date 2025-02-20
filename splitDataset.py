@@ -21,8 +21,11 @@ def resize_image_cv2(image, max_size=1280):
     new_h = int(original_h * scale_factor)
 
     # Resize the image using cv2
-    resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
-    
+    try:
+        resized_image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    except:
+        print(f"cannot resize image {original_w}x{original_h} to {new_w}x{new_h}")
+        resized_image = image
     return resized_image
 
 
