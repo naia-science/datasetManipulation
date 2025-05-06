@@ -217,9 +217,11 @@ def crop_image_with_margin(image, annotations, global_rect, margin=0.1):
     return cropped_image, new_annotations
 
 
-def split_img(img, ann, max_size=1280):
+def split_img(img, ann, max_size=1280, max_split=2):
     w,h,_ = img.shape
-    nb_splits_w, nb_splits_h = w // max_size, h // max_size
+    nb_splits_w, nb_splits_h = min(w // max_size, max_split-1), min(h // max_size, max_split-1)
+    print(nb_splits_h)
+    print(nb_splits_w)
     if nb_splits_w == 0 and nb_splits_h == 0:
         # no split, return just the basic image
         # we need to convert the ann to dictionnary to match the expected output
@@ -252,7 +254,7 @@ def split_img(img, ann, max_size=1280):
 
 from pathlib import Path
 
-def split_large_images(im_dir, max_size=1280):
+def split_large_images(im_dir, max_size=1280, max_splits=2):
     """
     Convert segmentation dataset splitting images that have a size larger than 1280 into several
 
@@ -281,7 +283,8 @@ def split_large_images(im_dir, max_size=1280):
     if len(dataset.labels[0]["segments"]) > 0:  # if it's segment data
         LOGGER.info("Segmentation labels detected")
     else:
-        LOGGER.info("Detection labels detected")
+        LOGGER.error("Detection labels detected")
+        return 
 
     save_dir = Path(im_dir).parent / "split"
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -315,7 +318,7 @@ def split_large_images(im_dir, max_size=1280):
             new_ann = l["segments"]
         
         if smallest < 0.01: # still small
-            imgs, new_anns = split_img(im, new_ann)
+            imgs, new_anns = split_img(im, new_ann, max_splits)
             total_cropped.remove(l["im_file"])
             total_split += [l["im_file"]]
         else:
