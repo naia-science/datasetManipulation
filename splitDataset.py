@@ -220,8 +220,6 @@ def crop_image_with_margin(image, annotations, global_rect, margin=0.1):
 def split_img(img, ann, max_size=1280, max_split=2):
     w,h,_ = img.shape
     nb_splits_w, nb_splits_h = min(w // max_size, max_split-1), min(h // max_size, max_split-1)
-    print(nb_splits_h)
-    print(nb_splits_w)
     if nb_splits_w == 0 and nb_splits_h == 0:
         # no split, return just the basic image
         # we need to convert the ann to dictionnary to match the expected output

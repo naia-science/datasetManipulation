@@ -33,6 +33,19 @@ def dl_roboflow_dataset(ver):
     # move the data.yaml file to the new directory
     os.rename(f"./datasets/Dataset-ViPARE-{ver}/data.yaml", f"./datasets/data.yaml")
 
+def dl_roboflow_datasetv2(ver = 1):
+    api_key = ""
+    if os.path.exists("./roboflowAPIkey.txt"):
+        with open("roboflowAPIkey.txt", "r") as f:
+            api_key = f.readline().strip()
+    else:
+        print("No Roboflow API key file found, please create a roboflowAPIkey.txt file with your key in it.")
+        return
+    rf = Roboflow(api_key=api_key)
+    project = rf.workspace("naia-science").project("dataset-vipare-2nd-5ybol")
+    dataset = project.version(ver).download("yolov8")
+    os.makedirs(f"./datasets/", exist_ok=True)
+    os.rename(f"./Dataset-ViPARE-(2nd)-{ver}/", f"./datasets/Dataset-ViPARE2-{ver}/")
 
 def display_image(path):
     """
