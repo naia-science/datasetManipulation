@@ -252,6 +252,60 @@ def split_img(img, ann, max_size=1280, max_split=2):
 
 from pathlib import Path
 
+def split_large_images_no_annotations(im_dir, max_size=1280, max_splits=2):
+    """
+    Split large images (no annotations) into smaller tiles.
+
+    Args:
+        im_dir (str | Path): Path to image directory.
+        max_size (int): Maximum dimension before splitting/resizing.
+        max_splits (int): Maximum number of splits per dimension.
+    Notes:
+        Generates a sibling "split/images" directory with the tiled images.
+    """
+    from tqdm import tqdm
+
+    im_dir = Path(im_dir)
+    save_dir = im_dir.parent / "split"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    new_im_dir = save_dir / "images"
+    new_im_dir.mkdir(parents=True, exist_ok=True)
+
+    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+    image_files = [p for p in im_dir.iterdir() if p.suffix.lower() in image_extensions]
+
+    total_num_generated = 0
+
+    for im_path in tqdm(image_files, desc="splitting images"):
+        im = cv2.imread(str(im_path))
+        if im is None:
+            print(f"Cannot read image: {im_path}")
+            continue
+
+        imgs, _ = split_img(im, [], max_size, max_splits)
+
+        # Always save the resized original
+        original = resize_image_cv2(im, max_size=max_size)
+        if original is None:
+            original = im
+        orig_file = new_im_dir / (im_path.stem + "_orig" + im_path.suffix)
+        cv2.imwrite(str(orig_file.resolve()), original)
+        total_num_generated += 1
+
+        if len(imgs) == 1:
+            imgs[0] = resize_image_cv2(imgs[0], max_size=max_size)
+            if imgs[0] is None:
+                print(f"Problem resizing: {im_path}")
+                continue
+
+        for i, img in enumerate(imgs):
+            total_num_generated += 1
+            name = im_path.stem + "_" + str(i)
+            img_file = new_im_dir / (name + im_path.suffix)
+            cv2.imwrite(str(img_file.resolve()), img)
+
+    print(f"Generated {total_num_generated} images from {len(image_files)} originals, saved in {save_dir}")
+
 def split_large_images(im_dir, max_size=1280, max_splits=2):
     """
     Convert segmentation dataset splitting images that have a size larger than 1280 into several
@@ -365,6 +419,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Split large images into smaller ones")
     parser.add_argument("im_dir", type=str, help="Path to image directory to split")
     parser.add_argument("--max_size", type=int, default=1280, help="Maximum size of images to split")
+    parser.add_argument("--no_annotations", action="store_true", help="Use no-annotation mode (plain images, no labels)")
     args = parser.parse_args()
 
-    split_large_images(args.im_dir, args.max_size)
+    if args.no_annotations:
+        split_large_images_no_annotations(args.im_dir, args.max_size)
+    else:
+        split_large_images(args.im_dir, args.max_size)
