@@ -174,14 +174,14 @@ def crop_image_with_margin(image, annotations, global_rect, margin=0.1):
         half_height = int(desired_height / 2)
         if y_center - half_height < 0:
             y_min_abs = 0
-            y_max = min(h, 2 * half_height)
+            y_max_abs = min(h, 2 * half_height)
         elif y_center + half_height > h:
             y_max_abs = h
             y_min_abs = max(0, h - 2 * half_height)
         else:
             y_min_abs = y_center - half_height
             y_max_abs = y_center + half_height
-    elif aspect_ratio < 0.5:  # Height is more than twice the width        
+    elif aspect_ratio < 0.5:  # Height is more than twice the width
         desired_width = (y_max_abs - y_min_abs) / 2
         x_center = int((x_min_abs + x_max_abs) / 2)
         half_width = int(desired_width / 2)
@@ -195,6 +195,11 @@ def crop_image_with_margin(image, annotations, global_rect, margin=0.1):
             x_min_abs = x_center - half_width
             x_max_abs = x_center + half_width
 
+    # Sync normalized coordinates back from the (possibly adjusted) pixel coordinates
+    x_min = x_min_abs / w
+    y_min = y_min_abs / h
+    x_max = x_max_abs / w
+    y_max = y_max_abs / h
 
     # Crop the image
     cropped_image = image[y_min_abs:y_max_abs, x_min_abs:x_max_abs]
@@ -203,15 +208,15 @@ def crop_image_with_margin(image, annotations, global_rect, margin=0.1):
     new_annotations = []
     for annotation in annotations:
         new_coords = np.array(annotation)
-        
+
         # Shift coordinates by the top-left corner of the crop
         new_coords[:, 0] -= x_min  # Adjust x by the crop margin in normalized coords
         new_coords[:, 1] -= y_min  # Adjust y by the crop margin in normalized coords
-        
+
         # Normalize coordinates with respect to the new cropped size
         new_coords[:, 0] /= (x_max - x_min)  # New width in normalized coords
         new_coords[:, 1] /= (y_max - y_min)  # New height in normalized coords
-        
+
         new_annotations.append(new_coords)
 
     return cropped_image, new_annotations
