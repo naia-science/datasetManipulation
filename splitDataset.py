@@ -398,7 +398,7 @@ def split_large_images(im_dir, max_size=1280, max_splits=2):
             cls = l["cls"]
             for k, v in new_ann.items():
                 v = v.flatten()
-                line = (int(cls[k]), *v)
+                line = (int(np.asarray(cls[k]).item()), *v)
                 texts.append(("%g " * len(line)).rstrip() % line)
             if texts:
                 with open(txt_file, "a") as f:
