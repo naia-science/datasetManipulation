@@ -41,12 +41,15 @@ def load_class_thresholds(spec, model_names=None):
     raise ValueError(f"Unrecognized class-threshold spec: {type(spec)}")
 
 
-def eval_fp(model_path, images_folder, conf_threshold=0.25, save_images=True, verbose=True, class_thr=None):
+def eval_fp(model_path, images_folder, conf_threshold=0.25, save_images=True, verbose=True, class_thr=None,
+            agnostic_nms=True, iou=0.7):
     # Load model and run inference. class_thr (path/list/dict) applies PER-CLASS thresholds.
+    # agnostic_nms/iou mirror production NMS: agnostic keeps one box per region (argmax class).
     model = YOLO(model_path)
     thr_map = load_class_thresholds(class_thr, model.names) if class_thr is not None else None
     predict_conf = max(min(thr_map.values()) - 1e-3, 1e-3) if thr_map else conf_threshold
-    results = model.predict(source=images_folder, conf=predict_conf, verbose=False)
+    results = model.predict(source=images_folder, conf=predict_conf, iou=iou,
+                            agnostic_nms=agnostic_nms, verbose=False)
 
     # Count false positives
     total_fps = 0
@@ -370,9 +373,76 @@ def sweep_frontier(run_dir, neg_folder, results_csv=None, conf=0.334,
     return R
 
 
+def _compute_curves(model_path, valid_data, neg_folder, conf_min=0.15, strip=False, cache=None,
+                    agnostic_nms=True, iou=0.7):
+    """Shared per-checkpoint data extraction for threshold_analysis / frontier_select.
+
+    Runs the only expensive work once: one val pass (per-class recall/precision curves over
+    the 1000-pt conf grid) and one low-conf NoLitter pass (every empty-scene detection conf).
+    Every threshold/frontier number is derived offline from these arrays, so results are a
+    deterministic function of this cache. When `cache` (a .npy path) is given it is loaded if
+    present, else computed and saved (allow_pickle).
+
+    Returns dict: model_path (resolved/stripped), names, px, rc, pc, f1c, present, nt,
+    N_neg, all_conf, img_max, cls_conf, cls_img_max, neg_img_cls_max (per-image {cid: maxconf}).
+    """
+    import numpy as np
+    if cache is not None and Path(cache).exists():
+        return np.load(cache, allow_pickle=True).item()
+
+    if strip:
+        from ultralytics.utils.torch_utils import strip_optimizer
+        strip_optimizer(str(model_path), s="/tmp/_thr_ckpt.pt")
+        model_path = "/tmp/_thr_ckpt.pt"
+
+    # ---- 1) VALID: per-class recall/precision curves over the 1000-pt conf grid ----
+    m = YOLO(model_path)
+    names = dict(m.names)                             # {id: name}
+    name2id = {v: k for k, v in names.items()}
+    res = m.val(data=valid_data, plots=False, verbose=False, agnostic_nms=agnostic_nms, iou=iou)
+    out = dict(
+        model_path=str(model_path), names=names,
+        px=np.asarray(res.box.px),                    # conf grid (1000,) == linspace(0,1,1000)
+        rc=np.asarray(res.box.r_curve),               # (n_present, 1000) recall @ IoU0.5
+        pc=np.asarray(res.box.p_curve),               # (n_present, 1000) precision @ IoU0.5
+        f1c=np.asarray(res.box.f1_curve),
+        present=list(res.box.ap_class_index),         # class ids aligned to curve rows
+        nt=np.asarray(res.nt_per_class),              # GT count per class id (len nc)
+    )
+
+    # ---- 2) NOLITTER: one low-conf pass, then sweep thresholds offline ----
+    fpi, _ = eval_fp(str(model_path), neg_folder, conf_min, save_images=False, verbose=False,
+                     agnostic_nms=agnostic_nms, iou=iou)
+    all_conf, img_max = [], []                        # every det conf; per-image max conf
+    cls_conf, cls_img_max = defaultdict(list), defaultdict(list)
+    neg_img_cls_max = []                              # per neg image: {cid: max conf} ({} if no det)
+    for img in fpi:
+        per_cls = defaultdict(float)
+        if img['detections']:
+            img_max.append(max(d['confidence'] for d in img['detections']))
+            for d in img['detections']:
+                cid = name2id.get(d['class_name'])
+                if cid is None:
+                    continue
+                all_conf.append(d['confidence']); cls_conf[cid].append(d['confidence'])
+                per_cls[cid] = max(per_cls[cid], d['confidence'])
+            for cid, mx in per_cls.items():
+                cls_img_max[cid].append(mx)
+        neg_img_cls_max.append(dict(per_cls))
+    out.update(N_neg=len(fpi), all_conf=all_conf, img_max=img_max,
+               cls_conf=dict(cls_conf), cls_img_max=dict(cls_img_max),
+               neg_img_cls_max=neg_img_cls_max)
+
+    if cache is not None:
+        Path(cache).parent.mkdir(parents=True, exist_ok=True)
+        np.save(cache, out, allow_pickle=True)
+    return out
+
+
 def threshold_analysis(model_path, valid_data, neg_folder,
-                       fp_budget=0.15, w_neg=1.0, beta=0.5, conf_min=0.05, recall_mode="micro",
-                       strip=False, out_csv="thresholds.csv", out_png="thresholds.png",
+                       fp_budget=0.15, w_neg=1.0, beta=0.5, conf_min=0.15, recall_mode="micro",
+                       strip=False, agnostic_nms=True, iou=0.7,
+                       out_csv="thresholds.csv", out_png="thresholds.png",
                        out_thr="class_thresholds.yaml"):
     """Pick operating thresholds from a deployment trade-off, not Ultralytics' F1-max-on-val.
 
@@ -408,22 +478,17 @@ def threshold_analysis(model_path, valid_data, neg_folder,
     import matplotlib.pyplot as plt
     from ultralytics.utils.metrics import smooth
 
-    if strip:
-        from ultralytics.utils.torch_utils import strip_optimizer
-        strip_optimizer(str(model_path), s="/tmp/_thr_ckpt.pt")
-        model_path = "/tmp/_thr_ckpt.pt"
-
-    # ---- 1) VALID: per-class recall/precision curves over the 1000-pt conf grid ----
-    m = YOLO(model_path)
-    names = m.names                                   # {id: name}
+    # Shared expensive step (one val pass + one low-conf NoLitter pass), reusable + cacheable.
+    cv = _compute_curves(model_path, valid_data, neg_folder, conf_min=conf_min, strip=strip,
+                         agnostic_nms=agnostic_nms, iou=iou)
+    model_path = cv["model_path"]
+    names = cv["names"]                               # {id: name}
     name2id = {v: k for k, v in names.items()}
-    res = m.val(data=valid_data, plots=False, verbose=False)
-    px = np.asarray(res.box.px)                       # conf grid, shape (1000,) == linspace(0,1,1000)
-    rc = np.asarray(res.box.r_curve)                  # (n_present, 1000) recall @ IoU0.5
-    pc = np.asarray(res.box.p_curve)                  # (n_present, 1000) precision @ IoU0.5
-    f1c = np.asarray(res.box.f1_curve)
-    present = list(res.box.ap_class_index)            # class ids aligned to curve rows
-    nt = np.asarray(res.nt_per_class)                 # GT count per class id (len nc)
+    px, rc, pc, f1c = cv["px"], cv["rc"], cv["pc"], cv["f1c"]
+    present, nt = cv["present"], cv["nt"]             # curve-aligned class ids; GT count per id
+    N_neg = cv["N_neg"]
+    all_conf, img_max = cv["all_conf"], cv["img_max"]
+    cls_conf, cls_img_max = cv["cls_conf"], cv["cls_img_max"]
 
     eps = 1e-9
     # reconstruct per-class TP/FP counts from the curves: tpc = recall*n_l ; fpc = tpc*(1-p)/p
@@ -431,27 +496,6 @@ def threshold_analysis(model_path, valid_data, neg_folder,
     tpc = {c: rc[i] * n_l[c] for i, c in enumerate(present)}
     fpc = {c: np.where(pc[i] > eps, tpc[c] * (1 - pc[i]) / np.clip(pc[i], eps, 1), 0.0)
            for i, c in enumerate(present)}
-
-    # ---- 2) NOLITTER: one low-conf pass, then sweep thresholds offline ----
-    fpi, _ = eval_fp(str(model_path), neg_folder, conf_min, save_images=False, verbose=False)
-    N_neg = len(fpi)
-    all_conf = []                                     # every detection conf (for FP_neg count)
-    img_max = []                                      # per-image max conf (for global image-FP rate)
-    cls_conf = defaultdict(list)                      # class_id -> all det confs
-    cls_img_max = defaultdict(list)                   # class_id -> per-image max conf for that class
-    for img in fpi:
-        if not img['detections']:
-            continue
-        img_max.append(max(d['confidence'] for d in img['detections']))
-        per_cls = defaultdict(float)
-        for d in img['detections']:
-            cid = name2id.get(d['class_name'])
-            if cid is None:
-                continue
-            all_conf.append(d['confidence']); cls_conf[cid].append(d['confidence'])
-            per_cls[cid] = max(per_cls[cid], d['confidence'])
-        for cid, mx in per_cls.items():
-            cls_img_max[cid].append(mx)
 
     def ge_count(arr, grid):                          # count(values >= t) for each t in grid
         a = np.sort(np.asarray(arr, dtype=float)) if len(arr) else np.zeros(0)
@@ -567,14 +611,268 @@ def threshold_analysis(model_path, valid_data, neg_folder,
                 curves=dict(px=px, recall=R, P_val=P_val, P_comb=P_comb, fp_img_rate=fp_img_rate))
 
 
+def frontier_thresholds(cv, r_target, absent_thr=0.5):
+    """Id-aligned per-class thresholds at a target per-class recall (feed straight to eval_fp).
+
+    Each val-present class is thresholded at the highest conf still achieving recall>=r_target;
+    classes absent from val (fire only on negatives, no recall) get a fixed `absent_thr`.
+    """
+    import numpy as np
+    px, rc, present, names = cv["px"], cv["rc"], cv["present"], cv["names"]
+    thr = {}
+    for i, c in enumerate(present):
+        idx = np.where(rc[i] >= r_target)[0]
+        j = int(idx[-1]) if len(idx) else len(px) - 1   # rc is non-increasing in conf
+        thr[c] = float(px[j])
+    return [round(thr.get(c, absent_thr), 4) for c in range(len(names))]
+
+
+def epoch_frontier(cv, w_grid=None, beta=0.5, absent_thr=1.01):
+    """Per-class-OPTIMAL deployable frontier for one checkpoint (threshold/calibration-free).
+
+    Sweeps the empty-scene FP penalty w_neg (a Lagrange multiplier). At each w_neg every
+    val-present class is thresholded INDEPENDENTLY at the argmax of its F-beta on combined
+    precision P_comb = TP / (TP + FP_val + w*FP_neg) vs its own recall — the same per-class
+    objective threshold_analysis uses, here swept into a curve. Classes absent from val
+    (recall 0, FP only) are suppressed (absent_thr>1). Each w_neg yields one (micro-recall,
+    NoLitter image-FP) point under those per-class thresholds; the sweep is the optimal envelope.
+
+    Returns list of dicts: w_neg, recall, fp_img_rate (%), fp_fires, thr_list (id-aligned).
+    """
+    import numpy as np
+    px, rc, pc = cv["px"], cv["rc"], cv["pc"]
+    present, nt, names = cv["present"], cv["nt"], cv["names"]
+    cls_conf, neg, N_neg = cv["cls_conf"], cv["neg_img_cls_max"], cv["N_neg"]
+    nc = len(names); eps = 1e-9
+    if w_grid is None:
+        w_grid = np.concatenate([[0.0], np.geomspace(0.1, 64.0, 19)])
+
+    def ge_count(arr, grid):                          # count(values >= t) for each t in grid
+        a = np.sort(np.asarray(arr, dtype=float)) if len(arr) else np.zeros(0)
+        return len(a) - np.searchsorted(a, grid, side="left")
+
+    n_l = {c: float(nt[c]) for c in present}
+    NL = sum(n_l.values()) + eps
+    tpc = {c: rc[i] * n_l[c] for i, c in enumerate(present)}          # per-class TP vs conf
+    fpc = {c: np.where(pc[i] > eps, tpc[c] * (1 - pc[i]) / np.clip(pc[i], eps, 1), 0.0)
+           for i, c in enumerate(present)}                            # per-class val FP vs conf
+    fpn = {c: ge_count(cls_conf.get(c, []), px) for c in present}     # per-class neg FP-dets vs conf
+    r_c = {c: tpc[c] / (n_l[c] + eps) for c in present}               # per-class recall vs conf
+
+    rows = []
+    for w in w_grid:
+        thr = [absent_thr] * nc                                       # absent classes suppressed
+        for i, c in enumerate(present):
+            pcomb = tpc[c] / (tpc[c] + fpc[c] + w * fpn[c] + eps)
+            fb = (1 + beta**2) * pcomb * r_c[c] / (beta**2 * pcomb + r_c[c] + eps)
+            thr[c] = float(px[int(np.argmax(np.nan_to_num(fb, nan=0.0)))])
+        tp_tot = 0.0                                                  # micro recall at thr vector
+        for i, c in enumerate(present):
+            j = min(int(np.searchsorted(px, thr[c])), len(px) - 1)
+            tp_tot += float(rc[i][j]) * n_l[c]
+        fires = tot = 0                                              # image fires if ANY class fires
+        for d in neg:
+            hit = False
+            for cid, mc in d.items():
+                if cid < nc and mc >= thr[cid]:
+                    hit = True; tot += 1
+            fires += int(hit)
+        rows.append(dict(w_neg=float(w), recall=tp_tot / NL,
+                         fp_img_rate=100.0 * fires / max(N_neg, 1), fp_fires=int(tot),
+                         thr_list=[round(t, 4) for t in thr]))
+    return rows
+
+
+def frontier_select(run_dir, valid_data, neg_folder, conf_min=0.15, top_map=5, top_post=5,
+                    close_epoch=None, fp_budget=10.0, beta=0.5, agnostic_nms=True, iou=0.7,
+                    tag=None, out_dir=None):
+    """Shortlist epochs by mAP50(B), then compare them on their own per-class FP frontiers.
+
+    Selection: top `top_map` epochs by box mAP50 over the whole run UNION the top `top_post`
+    post-closure epochs by mAP50 (dedup). mAP50 is a free, threshold-free quality gate; it is
+    blind to empty-scene FPs, so the actual pick comes from each model's recall-vs-NoLitter-FP
+    frontier (epoch_frontier), every model judged at its own per-class thresholds under
+    production-matched NMS. Auto-pick = max micro-recall with image-FP rate <= fp_budget (%).
+
+    Writes a self-describing run under <run>/eval/<tag>/ : manifest.json (argv, git commit,
+    versions, inputs, params), frontiers.csv, frontiers.png, summary.txt, class_thresholds_ep*.yaml,
+    and curves/epochNN.npy caches (the only expensive artifact; re-analysis is then free).
+    """
+    import json, subprocess, datetime, sys
+    import numpy as np, pandas as pd
+    import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+    from ultralytics.utils.torch_utils import strip_optimizer
+    import ultralytics, torch
+
+    run_dir = Path(run_dir)
+    df = pd.read_csv(run_dir / "results.csv"); df.columns = [c.strip() for c in df.columns]
+    if close_epoch is None:
+        close_epoch = _derive_close_epoch(run_dir) or int(df["epoch"].max())
+    mcol = "metrics/mAP50(B)"
+    top_a = df.nlargest(top_map, mcol)["epoch"].astype(int).tolist()
+    post = df[df["epoch"] > close_epoch]
+    top_b = post.nlargest(top_post, mcol)["epoch"].astype(int).tolist()
+    shortlist = sorted(set(top_a) | set(top_b))
+
+    tag = tag or "select_" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_dir = Path(out_dir) if out_dir else run_dir / "eval" / tag
+    (out_dir / "curves").mkdir(parents=True, exist_ok=True)
+
+    def _git(*args):
+        try:
+            return subprocess.check_output(["git", *args], cwd=str(Path(__file__).resolve().parent),
+                                           stderr=subprocess.DEVNULL).decode().strip()
+        except Exception:
+            return None
+    manifest = dict(
+        timestamp=datetime.datetime.now().isoformat(timespec="seconds"),
+        argv=sys.argv, cwd=str(Path.cwd()), code_file=str(Path(__file__).resolve()),
+        git_commit=_git("rev-parse", "HEAD"),
+        git_dirty=bool(_git("status", "--porcelain", "--", Path(__file__).name)),
+        versions=dict(python=sys.version.split()[0], torch=torch.__version__,
+                      ultralytics=ultralytics.__version__),
+        run_dir=str(run_dir), valid_data=str(valid_data), neg_folder=str(neg_folder),
+        neg_count=len(list(Path(neg_folder).glob("*"))),
+        params=dict(conf_min=conf_min, top_map=top_map, top_post=top_post, fp_budget=fp_budget,
+                    beta=beta, close_epoch=int(close_epoch), agnostic_nms=agnostic_nms, iou=iou),
+        shortlist=shortlist, shortlist_topmap=top_a, shortlist_postclosure=top_b,
+    )
+    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    print(f"[select] tag={tag}  out_dir={out_dir}")
+    print(f"[select] shortlist={shortlist}  (top_map={top_a}, post>{close_epoch}={top_b})")
+
+    rows, frontiers, op_thr = [], {}, {}
+    for ep in shortlist:
+        ck = run_dir / "weights" / f"epoch{ep - 1}.pt"   # results epoch 1-based; files epoch0..N-1
+        if not ck.exists():
+            print("skip (missing):", ck); continue
+        strip_optimizer(str(ck), s="/tmp/_sel_ckpt.pt")  # deployable EMA/FP16, like best.pt
+        cv = _compute_curves("/tmp/_sel_ckpt.pt", valid_data, neg_folder, conf_min=conf_min,
+                             strip=False, cache=out_dir / "curves" / f"epoch{ep}.npy",
+                             agnostic_nms=agnostic_nms, iou=iou)
+        fr = pd.DataFrame(epoch_frontier(cv, beta=beta)); fr.insert(0, "epoch", ep)
+        frontiers[ep] = fr
+        feas = fr[fr.fp_img_rate <= fp_budget]
+        op = feas.loc[feas.recall.idxmax()] if len(feas) else fr.loc[fr.fp_img_rate.idxmin()]
+        op_thr[ep] = list(op.thr_list)                   # winner's deployable per-class thresholds
+        m50 = float(df.loc[df.epoch == ep, mcol].iloc[0])
+        rows.append(dict(epoch=ep, map50=m50, recall_at_budget=float(op.recall),
+                         fp_at_op=float(op.fp_img_rate), feasible=bool(len(feas))))
+        print(f"  ep{ep:3d}  mAP50={m50:.4f}  recall@FP<={fp_budget:g}%={op.recall:.3f}  "
+              f"(FP={op.fp_img_rate:.1f}% @ w_neg={op.w_neg:g})")
+
+    pd.concat(frontiers.values(), ignore_index=True).to_csv(out_dir / "frontier_points.csv", index=False)
+    R = pd.DataFrame(rows)
+    feasR = R[R.feasible]
+    R = R.sort_values(["recall_at_budget", "map50"], ascending=False)
+    R.to_csv(out_dir / "frontiers.csv", index=False)
+    win = (feasR if len(feasR) else R).sort_values(["recall_at_budget", "map50"],
+                                                   ascending=False).iloc[0]
+    win_ep = int(win.epoch)
+
+    # "did it matter": does the FP frontier pick differ from argmax-mAP50, and how rank-correlated?
+    argmax_map_ep = int(R.loc[R.map50.idxmax(), "epoch"])
+    rho = float(R[["map50", "recall_at_budget"]].corr(method="spearman").iloc[0, 1]) if len(R) > 1 else float("nan")
+    changed = win_ep != argmax_map_ep
+
+    # winner's per-class-optimal thresholds at its operating point -> id-aligned YAML for eval_fp
+    names = np.load(out_dir / "curves" / f"epoch{win_ep}.npy", allow_pickle=True).item()["names"]
+    thr_list = op_thr[win_ep]
+    import yaml
+    thr_path = out_dir / f"class_thresholds_ep{win_ep}.yaml"
+    with open(thr_path, "w") as f:
+        # NOTE: 'epoch' is the 1-based results.csv row; 'weights_file' is the 0-based checkpoint
+        # name for that epoch (Ultralytics saves the Nth epoch as epoch{N-1}.pt). They differ by 1.
+        f.write(f"# epoch {win_ep} = results.csv row (1-based); weights/epoch{win_ep - 1}.pt is its "
+                f"checkpoint (0-based file naming, off by one).\n")
+        yaml.safe_dump({"model": str(run_dir / "weights" / f"epoch{win_ep - 1}.pt"),
+                        "epoch": win_ep, "weights_file": f"epoch{win_ep - 1}.pt",
+                        "fp_budget": fp_budget, "beta": beta,
+                        "agnostic_nms": agnostic_nms, "iou": iou,
+                        "names": [names[c] for c in range(len(names))],
+                        "thresholds": thr_list}, f, sort_keys=False)
+
+    # overlay plot: every model's frontier + chosen operating points + budget line
+    fig, ax = plt.subplots(figsize=(9, 6))
+    for ep, fr in frontiers.items():
+        ax.plot(fr.fp_img_rate, fr.recall, "-", lw=1, alpha=.7, label=f"ep{ep}")
+        o = fr[fr.fp_img_rate <= fp_budget]
+        if len(o):
+            o = o.loc[o.recall.idxmax()]; ax.scatter(o.fp_img_rate, o.recall, s=30, zorder=3)
+    ax.axvline(fp_budget, color="g", ls="--", alpha=.6, label=f"FP budget {fp_budget:g}%")
+    ax.set_xlabel("NoLitter image-FP rate %  (per-class-optimal thresholds, prod NMS)")
+    ax.set_ylabel("micro recall (valid)")
+    ax.set_title(f"Per-epoch deployable frontier — winner ep{win_ep}")
+    ax.set_xlim(0, max(2 * fp_budget, 5)); ax.grid(alpha=.3); ax.legend(fontsize=7, ncol=2)
+    plt.tight_layout(); plt.savefig(out_dir / "frontiers.png", dpi=120); plt.close()
+
+    # human-readable summary
+    lines = [f"frontier_select  tag={tag}", f"run_dir={run_dir}", f"timestamp={manifest['timestamp']}",
+             f"git_commit={manifest['git_commit']}  dirty={manifest['git_dirty']}",
+             f"params: conf_min={conf_min} agnostic_nms={agnostic_nms} iou={iou} beta={beta} "
+             f"fp_budget={fp_budget}% close_epoch={close_epoch}",
+             f"shortlist (top_map {top_a} U post-closure {top_b}) = {shortlist}", "",
+             "epoch  mAP50   recall@budget  FP%@op  feasible", "-" * 48]
+    for _, r in R.iterrows():
+        lines.append(f"{int(r.epoch):5d}  {r.map50:.4f}  {r.recall_at_budget:11.3f}  "
+                     f"{r.fp_at_op:6.1f}  {bool(r.feasible)}")
+    lines += ["", f"WINNER: epoch {win_ep}  (max recall under {fp_budget:g}% FP, tie-break mAP50)",
+              f"  recall={float(win.recall_at_budget):.3f}  mAP50={float(win.map50):.4f}",
+              f"  per-class thresholds -> {thr_path.name}", "",
+              "DID-IT-MATTER diagnostic:",
+              f"  argmax-mAP50 epoch = {argmax_map_ep};  FP-frontier winner = {win_ep};  "
+              f"frontier changed the pick = {changed}",
+              f"  Spearman(mAP50, recall@budget) across shortlist = {rho:.3f}  "
+              f"(near 1.0 => FP axis redundant for epoch choice; thresholds still required)",
+              f"  eval at deploy: python evalFalsePositives.py --mode eval "
+              f"--model {run_dir}/weights/epoch{win_ep-1}.pt --class-thr {thr_path}"]
+    (out_dir / "summary.txt").write_text("\n".join(lines) + "\n")
+    print("\n".join(lines[-9:]))
+    print(f"\n[select] wrote {out_dir}/ (manifest.json, frontiers.csv/png, summary.txt, {thr_path.name})")
+    return R
+
+
+def _resolve_epochs(spec, run_dir):
+    """Parse --epochs into a list of 1-based epochs. 'all' = every row in results.csv."""
+    import pandas as pd
+    if spec == "all":
+        df = pd.read_csv(Path(run_dir) / "results.csv")
+        df.columns = [c.strip() for c in df.columns]
+        return [int(e) for e in df["epoch"].tolist()]
+    out = []
+    for part in str(spec).split(","):
+        part = part.strip()
+        if "-" in part:
+            lo, hi = part.split("-")
+            out.extend(range(int(lo), int(hi) + 1))
+        elif part:
+            out.append(int(part))
+    return sorted(set(out))
+
+
+def _derive_close_epoch(run_dir):
+    """mosaic-close boundary = epochs - close_mosaic, read from the run's args.yaml (None if unavailable)."""
+    import yaml
+    ap = Path(run_dir) / "args.yaml"
+    if not ap.exists():
+        return None
+    with open(ap) as f:
+        args = yaml.safe_load(f)
+    if args.get("epochs") is not None and args.get("close_mosaic") is not None:
+        return int(args["epochs"]) - int(args["close_mosaic"])
+    return None
+
+
 if __name__ == "__main__":
-    # sweep (per-class thresholds + YAML):  python evalFalsePositives.py --mode sweep --epoch 85
-    # eval  (FP at those thresholds):        python evalFalsePositives.py --mode eval --class-thr class_thresholds.yaml
+    # frontier (best-epoch FP-vs-recall sweep):  python evalFalsePositives.py --mode frontier --run <run>
+    # sweep    (per-class thresholds + YAML):     python evalFalsePositives.py --mode sweep --epoch 85
+    # eval     (FP at those thresholds):          python evalFalsePositives.py --mode eval --class-thr class_thresholds.yaml
     import argparse
-    p = argparse.ArgumentParser(description="Sweep per-class thresholds, or eval_fp at a threshold config.")
-    p.add_argument("--mode", choices=["sweep", "eval"], default="sweep",
-                   help="sweep = threshold_analysis (writes YAML); eval = eval_fp on the negatives")
-    p.add_argument("--run", default="/home/charles/Programs/ultralytics-fork/runs/segment/train-4",
+    p = argparse.ArgumentParser(description="Select epoch (mAP50 shortlist + per-class FP frontier), sweep thresholds, or eval_fp.")
+    p.add_argument("--mode", choices=["select", "frontier", "sweep", "eval"], default="select",
+                   help="select = frontier_select (mAP50 shortlist -> per-class FP frontier, writes run/eval/<tag>/); "
+                        "frontier = sweep_frontier (coarse fixed-conf FP-vs-recall); sweep = threshold_analysis; eval = eval_fp")
+    p.add_argument("--run", default="/home/charles/Programs/ultralytics-fork/runs/segment/train-8",
                    help="training run dir (contains weights/epochN.pt)")
     p.add_argument("--epoch", default=85, help="checkpoint file number, i.e. weights/epoch<N>.pt")
     p.add_argument("--model", default=None, help="explicit checkpoint path (overrides --run/--epoch, e.g. best.pt)")
@@ -582,21 +880,48 @@ if __name__ == "__main__":
                    help="[sweep] micro = instance-weighted (deployment); macro = mean per-class (matches recall(B))")
     p.add_argument("--neg", default="/home/charles/Programs/datasetManipulation/NoLitter-3/train/split/images",
                    help="NoLitter hard-negative images folder")
-    p.add_argument("--valid", default="/home/charles/Programs/datasetManipulation/datasets/Dataset-ViPARE-33-split/data.yaml",
+    p.add_argument("--valid", default="/home/charles/Programs/datasetManipulation/datasets/Dataset-ViPARE-34-split/data.yaml",
                    help="[sweep] data.yaml for the recall/precision axis")
     p.add_argument("--fp-budget", type=float, default=0.15, help="[sweep] max NoLitter image-FP rate for the budget threshold")
     p.add_argument("--w-neg", type=float, default=1.0, help="[sweep] weight of empty-scene FPs (deployment empty-frame prior)")
     p.add_argument("--beta", type=float, default=0.5, help="[sweep] F-beta beta (<1 favors precision)")
+    p.add_argument("--epochs", default="all",
+                   help="[frontier] 1-based epochs to evaluate: 'all', comma list, or range a-b (e.g. 70-80)")
+    p.add_argument("--close-epoch", type=int, default=None,
+                   help="[frontier] mosaic-close boundary for annotation; default derived from args.yaml (epochs - close_mosaic)")
+    p.add_argument("--out-csv", default="fp_frontier.csv", help="[frontier] output CSV path")
+    p.add_argument("--out-png", default="fp_frontier.png", help="[frontier] output plot path")
+    p.add_argument("--top-map", type=int, default=5, help="[select] top-N epochs by mAP50(B) over the whole run")
+    p.add_argument("--top-post", type=int, default=5, help="[select] top-N post-closure epochs by mAP50(B)")
+    p.add_argument("--conf-min", type=float, default=0.15, help="[select/sweep] low conf for the single NoLitter+val pass")
+    p.add_argument("--tag", default=None, help="[select] eval subfolder name under <run>/eval/ (default: timestamp)")
+    p.add_argument("--out-dir", default=None, help="[select] explicit output dir (default <run>/eval/<tag>)")
+    p.add_argument("--agnostic-nms", dest="agnostic_nms", action="store_true", default=True,
+                   help="class-agnostic NMS (production default, one box per region)")
+    p.add_argument("--class-aware-nms", dest="agnostic_nms", action="store_false",
+                   help="class-aware NMS (ultralytics default; NOT production-faithful)")
+    p.add_argument("--iou", type=float, default=0.7, help="NMS IoU threshold (production value)")
     p.add_argument("--class-thr", default=None, help="[eval] per-class threshold YAML/list (else use --conf)")
-    p.add_argument("--conf", type=float, default=0.334, help="[eval] global conf when no --class-thr")
+    p.add_argument("--conf", type=float, default=0.334, help="operating conf ([eval] global conf / [frontier] FP operating point)")
     p.add_argument("--no-strip", action="store_true", help="skip strip_optimizer (pass an already-deployable .pt)")
     a = p.parse_args()
 
     ckpt = a.model or f"{a.run}/weights/epoch{a.epoch}.pt"
 
-    if a.mode == "sweep":
+    if a.mode == "select":
+        frontier_select(a.run, a.valid, a.neg, conf_min=a.conf_min, top_map=a.top_map,
+                        top_post=a.top_post, close_epoch=a.close_epoch, fp_budget=a.fp_budget * 100,
+                        agnostic_nms=a.agnostic_nms, iou=a.iou, tag=a.tag, out_dir=a.out_dir)
+    elif a.mode == "frontier":
+        epochs = _resolve_epochs(a.epochs, a.run)
+        close_epoch = a.close_epoch if a.close_epoch is not None else (_derive_close_epoch(a.run) or 80)
+        print(f"frontier: {len(epochs)} epochs ({epochs[0]}..{epochs[-1]})  conf={a.conf}  close_epoch={close_epoch}")
+        sweep_frontier(a.run, a.neg, conf=a.conf, epochs=epochs, close_epoch=close_epoch,
+                       out_csv=a.out_csv, out_png=a.out_png)
+    elif a.mode == "sweep":
         threshold_analysis(ckpt, a.valid, a.neg, fp_budget=a.fp_budget, w_neg=a.w_neg,
-                           beta=a.beta, recall_mode=a.recall_mode, strip=not a.no_strip)
+                           beta=a.beta, conf_min=a.conf_min, recall_mode=a.recall_mode,
+                           agnostic_nms=a.agnostic_nms, iou=a.iou, strip=not a.no_strip)
     else:  # eval: run eval_fp at a per-class config (or a global conf)
         model = ckpt
         if not a.no_strip:
@@ -604,6 +929,6 @@ if __name__ == "__main__":
             strip_optimizer(ckpt, s="/tmp/_eval_ckpt.pt")   # EMA/FP16 deployable weights
             model = "/tmp/_eval_ckpt.pt"
         if a.class_thr:
-            eval_fp(model, a.neg, class_thr=a.class_thr)
+            eval_fp(model, a.neg, class_thr=a.class_thr, agnostic_nms=a.agnostic_nms, iou=a.iou)
         else:
-            eval_fp(model, a.neg, conf_threshold=a.conf)
+            eval_fp(model, a.neg, conf_threshold=a.conf, agnostic_nms=a.agnostic_nms, iou=a.iou)

@@ -311,7 +311,7 @@ def split_large_images_no_annotations(im_dir, max_size=1280, max_splits=2):
 
     print(f"Generated {total_num_generated} images from {len(image_files)} originals, saved in {save_dir}")
 
-def split_large_images(im_dir, max_size=1280, max_splits=2):
+def split_large_images(im_dir, max_size=1280, max_splits=2, keep_backgrounds=True):
     """
     Convert segmentation dataset splitting images that have a size larger than 1280 into several
 
@@ -339,7 +339,7 @@ def split_large_images(im_dir, max_size=1280, max_splits=2):
     data = dict(names=list(range(1000)))
     data["channels"] = 3
     dataset = YOLODataset(im_dir, data=data)
-    if len(dataset.labels[0]["segments"]) > 0:  # if it's segment data
+    if any(len(lbl["segments"]) > 0 for lbl in dataset.labels):  # if it's segment data
         LOGGER.info("Segmentation labels detected")
     else:
         LOGGER.error("Detection labels detected")
@@ -360,7 +360,19 @@ def split_large_images(im_dir, max_size=1280, max_splits=2):
     for l in tqdm(dataset.labels, total=len(dataset.labels), desc="splitting images"):
         h, w = l["shape"]
         boxes = l["bboxes"]
-        if len(boxes) == 0:  # skip empty labels
+        if len(boxes) == 0:  # background image (no annotations)
+            if keep_backgrounds:
+                im = cv2.imread(l["im_file"])
+                im = resize_image_cv2(im, max_size=max_size)
+                if im is None:
+                    print("problem with " + l["im_file"])
+                    continue
+                name = Path(l["im_file"]).stem + "_0"
+                img_file = new_im_dir / (name + Path(l["im_file"]).suffix)
+                txt_file = new_label_dir / (name + ".txt")
+                cv2.imwrite(str(img_file.resolve()), im)
+                txt_file.touch()  # empty label = background
+                total_num_generated += 1
             continue
         total_num_processed += 1
         # why unnormalize inplace?
